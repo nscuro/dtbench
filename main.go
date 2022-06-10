@@ -65,7 +65,7 @@ func main() {
 
 	_ = token
 
-	dc, err = dtrack.NewClient(url, dtrack.WithAPIKey("JylzNkUhKH3jbAZhBwxV7OOguGbRKpek"))
+	dc, err = dtrack.NewClient(url, dtrack.WithAPIKey("PVHgKYFmns2TgB4qVch3KSO87vlQpwIR"))
 	if err != nil {
 		log.Fatalf("failed to initialize authenticated client: %v", err)
 	}
@@ -110,7 +110,7 @@ func main() {
 			log.Fatalf("failed to fetch %d projects: %v", diff, err)
 		}
 
-		for i, project := range projectsPage.Projects {
+		for i, project := range projectsPage.Items {
 			log.Printf("deleting project %s (%d/%d)", project.UUID, i+1, diff)
 			err = dc.Project.Delete(ctx, project.UUID)
 			if err != nil {
