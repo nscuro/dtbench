@@ -63,9 +63,7 @@ func main() {
 		}
 	}
 
-	_ = token
-
-	dc, err = dtrack.NewClient(url, dtrack.WithAPIKey("PVHgKYFmns2TgB4qVch3KSO87vlQpwIR"))
+	dc, err = dtrack.NewClient(url, dtrack.WithBearerToken(token))
 	if err != nil {
 		log.Fatalf("failed to initialize authenticated client: %v", err)
 	}
