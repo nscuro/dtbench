@@ -68,6 +68,43 @@ func main() {
 		log.Fatalf("failed to initialize authenticated client: %v", err)
 	}
 
+	log.Println("fetching teams")
+	teams, err := dtrack.FetchAll(func(po dtrack.PageOptions) (dtrack.Page[dtrack.Team], error) {
+		return dc.Team.GetAll(context.TODO(), po)
+	})
+	if err != nil {
+		log.Fatalf("failed to get teams: %v", err)
+	}
+
+	log.Println("looking for admin team")
+	var adminTeam dtrack.Team
+	for i, team := range teams {
+		if team.Name == "Administrators" {
+			adminTeam = teams[i]
+			break
+		}
+	}
+	if adminTeam.UUID == uuid.Nil {
+		log.Fatalf("unable to find admin team")
+	}
+
+	var apiKey string
+	if len(adminTeam.APIKeys) == 0 {
+		log.Println("generating api key")
+		apiKey, err = dc.Team.GenerateAPIKey(context.TODO(), adminTeam.UUID)
+		if err != nil {
+			log.Fatalf("failed to generate api key: %v", err)
+		}
+	} else {
+		log.Println("reusing existing api key")
+		apiKey = adminTeam.APIKeys[0].Key
+	}
+
+	dc, err = dtrack.NewClient(url, dtrack.WithAPIKey(apiKey))
+	if err != nil {
+		log.Fatalf("failed to initialize authenticated client: %v", err)
+	}
+
 	log.Println("fetching projects")
 	projectsPage, err := dc.Project.GetAll(ctx, dtrack.PageOptions{PageNumber: 1, PageSize: 1})
 	if err != nil {
