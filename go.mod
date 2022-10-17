@@ -1,4 +1,4 @@
-module dtbench
+module github.com/nscuro/dtbench
 
 go 1.18
 
