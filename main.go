@@ -9,6 +9,7 @@ import (
 	"net"
 	"net/http"
 	"os"
+	"sync"
 	"time"
 
 	"github.com/google/uuid"
@@ -21,11 +22,15 @@ func main() {
 		password     string
 		projectCount int
 		bomFilePath  string
+		doWait       bool
+		waitTimeout  time.Duration
 	)
 	flag.StringVar(&url, "url", "", "Dependency-Track URL")
 	flag.StringVar(&password, "pass", "", "Dependency-Track admin password")
 	flag.IntVar(&projectCount, "count", 10, "Target project count")
 	flag.StringVar(&bomFilePath, "bom", "", "BOM file path")
+	flag.BoolVar(&doWait, "wait", false, "Wait for BOM processing to complete")
+	flag.DurationVar(&waitTimeout, "wait-timeout", 5*time.Minute, "Wait timeout")
 	flag.Parse()
 
 	dc, err := dtrack.NewClient(url)
@@ -111,6 +116,7 @@ func main() {
 		log.Fatalf("failed to get projects: %v", err)
 	}
 
+	start := time.Now()
 	log.Printf("found %d projects, want %d", projectsPage.TotalCount, projectCount)
 	if projectsPage.TotalCount < projectCount {
 		diff := projectCount - projectsPage.TotalCount
@@ -124,17 +130,38 @@ func main() {
 
 		bomEncoded := base64.StdEncoding.EncodeToString(bomContent)
 
+		wg := &sync.WaitGroup{}
+		waitCtx, _ = context.WithTimeout(context.TODO(), waitTimeout)
+
 		for i := 0; i < diff; i++ {
 			log.Printf("creating project %d/%d", i+1, diff)
-			_, err = dc.BOM.Upload(ctx, dtrack.BOMUploadRequest{
+			token, uploadErr := dc.BOM.Upload(ctx, dtrack.BOMUploadRequest{
 				ProjectName:    "Dependency-Track",
 				ProjectVersion: uuid.NewString(),
 				BOM:            bomEncoded,
 				AutoCreate:     true,
 			})
-			if err != nil {
-				log.Fatalf("failed to upload project: %v", err)
+			if uploadErr != nil {
+				log.Fatalf("failed to upload project: %v", uploadErr)
 			}
+			if doWait {
+				wg.Add(1)
+				go func() {
+					defer wg.Done()
+					start := time.Now()
+					waitErr := waitForToken(waitCtx, dc, token)
+					if waitErr != nil {
+						log.Printf("waiting for token %s failed after %s: %v", token, time.Since(start), waitErr)
+					} else {
+						log.Printf("token %s processed after %s", token, time.Since(start))
+					}
+				}()
+			}
+		}
+
+		if doWait {
+			wg.Wait()
+			log.Printf("All done after %s", time.Since(start))
 		}
 	} else {
 		diff := projectsPage.TotalCount - projectCount
@@ -175,6 +202,25 @@ func waitForDT(ctx context.Context, dc *dtrack.Client) error {
 			}
 
 			return nil
+		case <-ctx.Done():
+			return ctx.Err()
+		}
+	}
+}
+
+func waitForToken(ctx context.Context, dc *dtrack.Client, token dtrack.BOMUploadToken) error {
+	ticker := time.NewTicker(1 * time.Second)
+
+	for {
+		select {
+		case <-ticker.C:
+			processing, err := dc.BOM.IsBeingProcessed(ctx, token)
+			if err != nil {
+				return err
+			}
+			if !processing {
+				return nil
+			}
 		case <-ctx.Done():
 			return ctx.Err()
 		}
