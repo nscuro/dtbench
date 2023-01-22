@@ -13,8 +13,8 @@ import (
 	"sync"
 	"time"
 
+	"github.com/DependencyTrack/client-go"
 	"github.com/google/uuid"
-	"github.com/nscuro/dtrack-client"
 )
 
 func main() {
