@@ -9,6 +9,7 @@ import (
 	"net"
 	"net/http"
 	"os"
+	"path/filepath"
 	"sync"
 	"time"
 
@@ -21,21 +22,32 @@ func main() {
 		url          string
 		password     string
 		projectCount int
-		bomFilePath  string
+		bomFilesPath string
 		doWait       bool
 		waitTimeout  time.Duration
+		delay        time.Duration
 	)
 	flag.StringVar(&url, "url", "", "Dependency-Track URL")
 	flag.StringVar(&password, "pass", "", "Dependency-Track admin password")
 	flag.IntVar(&projectCount, "count", 10, "Target project count")
-	flag.StringVar(&bomFilePath, "bom", "", "BOM file path")
+	flag.StringVar(&bomFilesPath, "boms", "", "BOMs file path")
 	flag.BoolVar(&doWait, "wait", false, "Wait for BOM processing to complete")
 	flag.DurationVar(&waitTimeout, "wait-timeout", 5*time.Minute, "Wait timeout")
+	flag.DurationVar(&delay, "delay", 0, "Delay between upload requests")
 	flag.Parse()
 
 	dc, err := dtrack.NewClient(url)
 	if err != nil {
 		log.Fatalf("failed to initialize client: %v", err)
+	}
+
+	bomFilePaths, err := filepath.Glob(filepath.Join(bomFilesPath, "*.cdx.json"))
+	if err != nil {
+		log.Fatalf("failed to glob bom files in %s: %v", bomFilesPath, err)
+	} else if len(bomFilePaths) == 0 {
+		log.Fatalf("no bom files found in %s", bomFilesPath)
+	} else {
+		log.Printf("found %d bom files in %s", len(bomFilePaths), bomFilesPath)
 	}
 
 	ctx := context.Background()
@@ -122,18 +134,19 @@ func main() {
 		diff := projectCount - projectsPage.TotalCount
 		log.Printf("creating %d projects", diff)
 
-		log.Printf("reading bom %s", bomFilePath)
-		bomContent, err := os.ReadFile(bomFilePath)
-		if err != nil {
-			log.Fatalf("failed to read bom: %v", err)
-		}
-
-		bomEncoded := base64.StdEncoding.EncodeToString(bomContent)
-
 		wg := &sync.WaitGroup{}
 		waitCtx, _ = context.WithTimeout(context.TODO(), waitTimeout)
 
 		for i := 0; i < diff; i++ {
+			bomFilePath := bomFilePaths[(i+1)%len(bomFilePaths)]
+			log.Printf("reading bom %s", bomFilePath)
+			bomContent, err := os.ReadFile(bomFilePath)
+			if err != nil {
+				log.Fatalf("failed to read bom: %v", err)
+			}
+
+			bomEncoded := base64.StdEncoding.EncodeToString(bomContent)
+
 			log.Printf("creating project %d/%d", i+1, diff)
 			token, uploadErr := dc.BOM.Upload(ctx, dtrack.BOMUploadRequest{
 				ProjectName:    "Dependency-Track",
@@ -157,13 +170,17 @@ func main() {
 					}
 				}()
 			}
+
+			if delay > 0 && (i+1) < diff {
+				time.Sleep(delay)
+			}
 		}
 
 		if doWait {
 			wg.Wait()
-			log.Printf("All done after %s", time.Since(start))
+			log.Printf("all done after %s", time.Since(start))
 		}
-	} else {
+	} else if projectsPage.TotalCount > projectCount {
 		diff := projectsPage.TotalCount - projectCount
 		log.Printf("deleting first %d projects", diff)
 
@@ -179,6 +196,8 @@ func main() {
 				log.Fatalf("failed to delete project %s: %v", project.UUID, err)
 			}
 		}
+	} else {
+		log.Println("nothing to do")
 	}
 }
 
