@@ -53,7 +53,7 @@ func main() {
 	ctx := context.Background()
 
 	log.Println("waiting for dtrack to be ready")
-	waitCtx, _ := context.WithTimeout(ctx, 1*time.Minute)
+	waitCtx, _ := context.WithTimeout(ctx, 1*time.Minute) // nolint:govet
 	err = waitForDT(waitCtx, dc)
 	if err != nil {
 		log.Fatalf("failed to wait for dtrack: %v", err)
@@ -135,7 +135,7 @@ func main() {
 		log.Printf("creating %d projects", diff)
 
 		wg := &sync.WaitGroup{}
-		waitCtx, _ = context.WithTimeout(context.TODO(), waitTimeout)
+		waitCtx, _ = context.WithTimeout(context.TODO(), waitTimeout) // nolint:govet
 
 		for i := 0; i < diff; i++ {
 			bomFilePath := bomFilePaths[(i+1)%len(bomFilePaths)]
