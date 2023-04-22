@@ -6,11 +6,13 @@ import (
 	"encoding/base64"
 	"errors"
 	"flag"
+	"fmt"
 	"log"
 	"net"
 	"net/http"
 	"os"
 	"path/filepath"
+	"runtime/debug"
 	"sync"
 	"time"
 
@@ -21,14 +23,15 @@ import (
 
 func main() {
 	var (
-		url          string
-		password     string
-		projectCount int
-		bomFilesPath string
-		doWait       bool
-		pollInterval time.Duration
-		waitTimeout  time.Duration
-		delay        time.Duration
+		url            string
+		password       string
+		projectCount   int
+		bomFilesPath   string
+		doWait         bool
+		pollInterval   time.Duration
+		waitTimeout    time.Duration
+		delay          time.Duration
+		requestTimeout time.Duration
 	)
 	flag.StringVar(&url, "url", "", "Dependency-Track URL")
 	flag.StringVar(&password, "pass", "", "Dependency-Track admin password")
@@ -38,9 +41,15 @@ func main() {
 	flag.BoolVar(&doWait, "wait", false, "Wait for BOM processing to complete")
 	flag.DurationVar(&waitTimeout, "wait-timeout", 5*time.Minute, "Wait timeout")
 	flag.DurationVar(&delay, "delay", 0, "Delay between upload requests")
+	flag.DurationVar(&requestTimeout, "request-timeout", 10*time.Second, "Request timeout")
 	flag.Parse()
 
-	dc, err := dtrack.NewClient(url)
+	clientOptions := []dtrack.ClientOption{
+		dtrack.WithTimeout(requestTimeout),
+		dtrack.WithUserAgent(getUserAgent()),
+	}
+
+	dc, err := dtrack.NewClient(url, clientOptions...)
 	if err != nil {
 		log.Fatalf("failed to initialize client: %v", err)
 	}
@@ -84,7 +93,7 @@ func main() {
 		}
 	}
 
-	dc, err = dtrack.NewClient(url, dtrack.WithBearerToken(token))
+	dc, err = dtrack.NewClient(url, append(clientOptions, dtrack.WithBearerToken(token))...)
 	if err != nil {
 		log.Fatalf("failed to initialize authenticated client: %v", err)
 	}
@@ -121,7 +130,7 @@ func main() {
 		apiKey = adminTeam.APIKeys[0].Key
 	}
 
-	dc, err = dtrack.NewClient(url, dtrack.WithAPIKey(apiKey))
+	dc, err = dtrack.NewClient(url, append(clientOptions, dtrack.WithAPIKey(apiKey))...)
 	if err != nil {
 		log.Fatalf("failed to initialize authenticated client: %v", err)
 	}
@@ -226,6 +235,15 @@ func main() {
 	} else {
 		log.Println("nothing to do")
 	}
+}
+
+func getUserAgent() string {
+	info, ok := debug.ReadBuildInfo()
+	if !ok || info.Main.Path == "" {
+		return "github.com/nscuro/dtbench"
+	}
+
+	return fmt.Sprintf("%s@%s", info.Main.Path, info.Main.Version)
 }
 
 func waitForDT(ctx context.Context, dc *dtrack.Client) error {
