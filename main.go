@@ -1,6 +1,7 @@
 package main
 
 import (
+	"bytes"
 	"context"
 	"encoding/base64"
 	"errors"
@@ -13,7 +14,8 @@ import (
 	"sync"
 	"time"
 
-	"github.com/DependencyTrack/client-go"
+	"github.com/CycloneDX/cyclonedx-go"
+	dtrack "github.com/DependencyTrack/client-go"
 	"github.com/google/uuid"
 )
 
@@ -24,6 +26,7 @@ func main() {
 		projectCount int
 		bomFilesPath string
 		doWait       bool
+		pollInterval time.Duration
 		waitTimeout  time.Duration
 		delay        time.Duration
 	)
@@ -31,6 +34,7 @@ func main() {
 	flag.StringVar(&password, "pass", "", "Dependency-Track admin password")
 	flag.IntVar(&projectCount, "count", 10, "Target project count")
 	flag.StringVar(&bomFilesPath, "boms", "", "BOMs file path")
+	flag.DurationVar(&pollInterval, "poll-interval", 1*time.Second, "Interval for polling completion status")
 	flag.BoolVar(&doWait, "wait", false, "Wait for BOM processing to complete")
 	flag.DurationVar(&waitTimeout, "wait-timeout", 5*time.Minute, "Wait timeout")
 	flag.DurationVar(&delay, "delay", 0, "Delay between upload requests")
@@ -145,12 +149,35 @@ func main() {
 				log.Fatalf("failed to read bom: %v", err)
 			}
 
+			var bom cyclonedx.BOM
+			err = cyclonedx.NewBOMDecoder(bytes.NewReader(bomContent), cyclonedx.BOMFileFormatJSON).Decode(&bom)
+			if err != nil {
+				log.Fatalf("failed to decode bom: %v", err)
+			}
+
+			projectName := "Dependency-Track"
+			projectVersion := uuid.NewString()
+
+			// Use project name and version from BOM if possible.
+			if bom.Metadata != nil && bom.Metadata.Component != nil {
+				if bom.Metadata.Component.Name != "" {
+					projectName = ""
+					if bom.Metadata.Component.Group != "" {
+						projectName += bom.Metadata.Component.Group + "_"
+					}
+					projectName += bom.Metadata.Component.Name
+				}
+				if bom.Metadata.Component.Version != "" {
+					projectVersion = bom.Metadata.Component.Version + "_" + projectVersion
+				}
+			}
+
 			bomEncoded := base64.StdEncoding.EncodeToString(bomContent)
 
 			log.Printf("creating project %d/%d", i+1, diff)
 			token, uploadErr := dc.BOM.Upload(ctx, dtrack.BOMUploadRequest{
-				ProjectName:    "Dependency-Track",
-				ProjectVersion: uuid.NewString(),
+				ProjectName:    projectName,
+				ProjectVersion: projectVersion,
 				BOM:            bomEncoded,
 				AutoCreate:     true,
 			})
@@ -162,7 +189,7 @@ func main() {
 				go func() {
 					defer wg.Done()
 					start := time.Now()
-					waitErr := waitForToken(waitCtx, dc, token)
+					waitErr := waitForToken(waitCtx, dc, token, pollInterval)
 					if waitErr != nil {
 						log.Printf("waiting for token %s failed after %s: %v", token, time.Since(start), waitErr)
 					} else {
@@ -227,8 +254,8 @@ func waitForDT(ctx context.Context, dc *dtrack.Client) error {
 	}
 }
 
-func waitForToken(ctx context.Context, dc *dtrack.Client, token dtrack.BOMUploadToken) error {
-	ticker := time.NewTicker(1 * time.Second)
+func waitForToken(ctx context.Context, dc *dtrack.Client, token dtrack.BOMUploadToken, pollInterval time.Duration) error {
+	ticker := time.NewTicker(pollInterval)
 
 	for {
 		select {
