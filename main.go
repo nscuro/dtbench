@@ -32,6 +32,7 @@ func main() {
 		waitTimeout    time.Duration
 		delay          time.Duration
 		requestTimeout time.Duration
+		skipFailed     bool
 	)
 	flag.StringVar(&url, "url", "", "Dependency-Track URL")
 	flag.StringVar(&password, "pass", "", "Dependency-Track admin password")
@@ -42,6 +43,7 @@ func main() {
 	flag.DurationVar(&waitTimeout, "wait-timeout", 5*time.Minute, "Wait timeout")
 	flag.DurationVar(&delay, "delay", 0, "Delay between upload requests")
 	flag.DurationVar(&requestTimeout, "request-timeout", 10*time.Second, "Request timeout")
+	flag.BoolVar(&skipFailed, "skip-failed", false, "Skip BOMs that failed to upload")
 	flag.Parse()
 
 	clientOptions := []dtrack.ClientOption{
@@ -142,6 +144,8 @@ func main() {
 	}
 
 	start := time.Now()
+	totalUploads := 0
+	failedUploads := 0
 	log.Printf("found %d projects, want %d", projectsPage.TotalCount, projectCount)
 	if projectsPage.TotalCount < projectCount {
 		diff := projectCount - projectsPage.TotalCount
@@ -183,6 +187,7 @@ func main() {
 
 			bomEncoded := base64.StdEncoding.EncodeToString(bomContent)
 
+			totalUploads++
 			log.Printf("creating project %d/%d", i+1, diff)
 			token, uploadErr := dc.BOM.Upload(ctx, dtrack.BOMUploadRequest{
 				ProjectName:    projectName,
@@ -191,6 +196,13 @@ func main() {
 				AutoCreate:     true,
 			})
 			if uploadErr != nil {
+				if skipFailed {
+					failedUploads++
+					log.Printf("failed to upload project: %v", uploadErr)
+					log.Printf("%d/%d uploads failed so far", failedUploads, totalUploads)
+					continue
+				}
+
 				log.Fatalf("failed to upload project: %v", uploadErr)
 			}
 			if doWait {
