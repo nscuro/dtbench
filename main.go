@@ -3,7 +3,6 @@ package main
 import (
 	"bytes"
 	"context"
-	"encoding/base64"
 	"errors"
 	"flag"
 	"fmt"
@@ -185,14 +184,12 @@ func main() {
 				}
 			}
 
-			bomEncoded := base64.StdEncoding.EncodeToString(bomContent)
-
 			totalUploads++
 			log.Printf("creating project %d/%d", i+1, diff)
-			token, uploadErr := dc.BOM.Upload(ctx, dtrack.BOMUploadRequest{
+			token, uploadErr := dc.BOM.PostBom(ctx, dtrack.BOMUploadRequest{
 				ProjectName:    projectName,
 				ProjectVersion: projectVersion,
-				BOM:            bomEncoded,
+				BOM:            string(bomContent),
 				AutoCreate:     true,
 			})
 			if uploadErr != nil {
