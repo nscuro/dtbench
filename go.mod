@@ -1,6 +1,6 @@
 module github.com/nscuro/dtbench
 
-go 1.19
+go 1.22.4
 
 require (
 	github.com/CycloneDX/cyclonedx-go v0.7.1
