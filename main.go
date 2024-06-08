@@ -3,10 +3,12 @@ package main
 import (
 	"bytes"
 	"context"
+	"errors"
 	"flag"
 	"fmt"
 	"log"
 	"net"
+	"net/http"
 	"os"
 	"path/filepath"
 	"runtime/debug"
@@ -74,7 +76,22 @@ func main() {
 	log.Println("authenticating")
 	token, err := dc.User.Login(ctx, "admin", password)
 	if err != nil {
-		log.Fatalf("failed to authenticate: %v", err)
+		var apiErr *dtrack.APIError
+		if !errors.As(err, &apiErr) || apiErr.StatusCode != http.StatusUnauthorized {
+			log.Fatalf("failed to authenticate: %v", err)
+		}
+
+		log.Println("probably first launch, changing admin password")
+		err = dc.User.ForceChangePassword(ctx, "admin", "admin", password)
+		if err != nil {
+			log.Fatalf("failed to change admin password: %v", err)
+		}
+
+		log.Println("re-attempting login")
+		token, err = dc.User.Login(ctx, "admin", password)
+		if err != nil {
+			log.Fatalf("failed to authenticate: %v", err)
+		}
 	}
 
 	dc, err = dtrack.NewClient(url, append(clientOptions, dtrack.WithBearerToken(token))...)
