@@ -3,12 +3,10 @@ package main
 import (
 	"bytes"
 	"context"
-	"errors"
 	"flag"
 	"fmt"
 	"log"
 	"net"
-	"net/http"
 	"os"
 	"path/filepath"
 	"runtime/debug"
@@ -76,62 +74,10 @@ func main() {
 	log.Println("authenticating")
 	token, err := dc.User.Login(ctx, "admin", password)
 	if err != nil {
-		var apiErr *dtrack.APIError
-		if !errors.As(err, &apiErr) || apiErr.StatusCode != http.StatusUnauthorized {
-			log.Fatalf("failed to authenticate: %v", err)
-		}
-
-		log.Println("probably first launch, changing admin password")
-		err = dc.User.ForceChangePassword(ctx, "admin", "admin", password)
-		if err != nil {
-			log.Fatalf("failed to change admin password: %v", err)
-		}
-
-		log.Println("re-attempting login")
-		token, err = dc.User.Login(ctx, "admin", password)
-		if err != nil {
-			log.Fatalf("failed to authenticate: %v", err)
-		}
+		log.Fatalf("failed to authenticate: %v", err)
 	}
 
 	dc, err = dtrack.NewClient(url, append(clientOptions, dtrack.WithBearerToken(token))...)
-	if err != nil {
-		log.Fatalf("failed to initialize authenticated client: %v", err)
-	}
-
-	log.Println("fetching teams")
-	teams, err := dtrack.FetchAll(func(po dtrack.PageOptions) (dtrack.Page[dtrack.Team], error) {
-		return dc.Team.GetAll(context.TODO(), po)
-	})
-	if err != nil {
-		log.Fatalf("failed to get teams: %v", err)
-	}
-
-	log.Println("looking for admin team")
-	var adminTeam dtrack.Team
-	for i, team := range teams {
-		if team.Name == "Administrators" {
-			adminTeam = teams[i]
-			break
-		}
-	}
-	if adminTeam.UUID == uuid.Nil {
-		log.Fatalf("unable to find admin team")
-	}
-
-	var apiKey string
-	if len(adminTeam.APIKeys) == 0 {
-		log.Println("generating api key")
-		apiKey, err = dc.Team.GenerateAPIKey(context.TODO(), adminTeam.UUID)
-		if err != nil {
-			log.Fatalf("failed to generate api key: %v", err)
-		}
-	} else {
-		log.Println("reusing existing api key")
-		apiKey = adminTeam.APIKeys[0].Key
-	}
-
-	dc, err = dtrack.NewClient(url, append(clientOptions, dtrack.WithAPIKey(apiKey))...)
 	if err != nil {
 		log.Fatalf("failed to initialize authenticated client: %v", err)
 	}
