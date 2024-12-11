@@ -270,7 +270,7 @@ func waitForToken(ctx context.Context, dc *dtrack.Client, token dtrack.BOMUpload
 	for {
 		select {
 		case <-ticker.C:
-			processing, err := dc.BOM.IsBeingProcessed(ctx, token)
+			processing, err := dc.Event.IsBeingProcessed(ctx, dtrack.EventToken(token))
 			if err != nil {
 				return err
 			}
