@@ -6,6 +6,7 @@ import (
 	"errors"
 	"flag"
 	"fmt"
+	"golang.org/x/sync/semaphore"
 	"log"
 	"net"
 	"net/http"
@@ -13,6 +14,7 @@ import (
 	"path/filepath"
 	"runtime/debug"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"github.com/CycloneDX/cyclonedx-go"
@@ -26,6 +28,7 @@ func main() {
 		password       string
 		projectCount   int
 		bomFilesPath   string
+		maxConcurrency int
 		doWait         bool
 		pollInterval   time.Duration
 		waitTimeout    time.Duration
@@ -37,6 +40,7 @@ func main() {
 	flag.StringVar(&password, "pass", "", "Dependency-Track admin password")
 	flag.IntVar(&projectCount, "count", 10, "Target project count")
 	flag.StringVar(&bomFilesPath, "boms", "", "BOMs file path")
+	flag.IntVar(&maxConcurrency, "max-concurrency", 5, "Max concurrent BOM upload requests")
 	flag.DurationVar(&pollInterval, "poll-interval", 1*time.Second, "Interval for polling completion status")
 	flag.BoolVar(&doWait, "wait", false, "Wait for BOM processing to complete")
 	flag.DurationVar(&waitTimeout, "wait-timeout", 5*time.Minute, "Wait timeout")
@@ -65,6 +69,7 @@ func main() {
 	}
 
 	ctx := context.Background()
+	sem := semaphore.NewWeighted(int64(maxConcurrency))
 
 	log.Println("waiting for dtrack to be ready")
 	waitCtx, _ := context.WithTimeout(ctx, 1*time.Minute) // nolint:govet
@@ -106,8 +111,8 @@ func main() {
 	}
 
 	start := time.Now()
-	totalUploads := 0
-	failedUploads := 0
+	var totalUploads int32
+	var failedUploads int32
 	log.Printf("found %d projects, want %d", projectsPage.TotalCount, projectCount)
 	if projectsPage.TotalCount < projectCount {
 		diff := projectCount - projectsPage.TotalCount
@@ -117,72 +122,87 @@ func main() {
 		waitCtx, _ = context.WithTimeout(context.TODO(), waitTimeout) // nolint:govet
 
 		for i := 0; i < diff; i++ {
-			bomFilePath := bomFilePaths[(i+1)%len(bomFilePaths)]
-			log.Printf("reading bom %s", bomFilePath)
-			bomContent, err := os.ReadFile(bomFilePath)
+			err = sem.Acquire(ctx, 1)
 			if err != nil {
-				log.Fatalf("failed to read bom: %v", err)
+				log.Fatalf("failed to acquire semaphore: %v", err)
 			}
 
-			var bom cyclonedx.BOM
-			err = cyclonedx.NewBOMDecoder(bytes.NewReader(bomContent), cyclonedx.BOMFileFormatJSON).Decode(&bom)
-			if err != nil {
-				log.Fatalf("failed to decode bom: %v", err)
-			}
+			go func() {
+				defer sem.Release(1)
 
-			projectName := "Dependency-Track"
-			projectVersion := uuid.NewString()
+				bomFilePath := bomFilePaths[(i+1)%len(bomFilePaths)]
+				log.Printf("reading bom %s", bomFilePath)
+				bomContent, err := os.ReadFile(bomFilePath)
+				if err != nil {
+					log.Fatalf("failed to read bom: %v", err)
+				}
 
-			// Use project name and version from BOM if possible.
-			if bom.Metadata != nil && bom.Metadata.Component != nil {
-				if bom.Metadata.Component.Name != "" {
-					projectName = ""
-					if bom.Metadata.Component.Group != "" {
-						projectName += bom.Metadata.Component.Group + "_"
+				var bom cyclonedx.BOM
+				err = cyclonedx.NewBOMDecoder(bytes.NewReader(bomContent), cyclonedx.BOMFileFormatJSON).Decode(&bom)
+				if err != nil {
+					log.Fatalf("failed to decode bom: %v", err)
+				}
+
+				projectName := "Dependency-Track"
+				projectVersion := uuid.NewString()
+
+				// Use project name and version from BOM if possible.
+				if bom.Metadata != nil && bom.Metadata.Component != nil {
+					if bom.Metadata.Component.Name != "" {
+						projectName = ""
+						if bom.Metadata.Component.Group != "" {
+							projectName += bom.Metadata.Component.Group + "_"
+						}
+						projectName += bom.Metadata.Component.Name
 					}
-					projectName += bom.Metadata.Component.Name
-				}
-				if bom.Metadata.Component.Version != "" {
-					projectVersion = bom.Metadata.Component.Version + "_" + projectVersion
-				}
-			}
-
-			totalUploads++
-			log.Printf("creating project %d/%d", i+1, diff)
-			token, uploadErr := dc.BOM.PostBom(ctx, dtrack.BOMUploadRequest{
-				ProjectName:    projectName,
-				ProjectVersion: projectVersion,
-				BOM:            string(bomContent),
-				AutoCreate:     true,
-			})
-			if uploadErr != nil {
-				if skipFailed {
-					failedUploads++
-					log.Printf("failed to upload project: %v", uploadErr)
-					log.Printf("%d/%d uploads failed so far", failedUploads, totalUploads)
-					continue
-				}
-
-				log.Fatalf("failed to upload project: %v", uploadErr)
-			}
-			if doWait {
-				wg.Add(1)
-				go func() {
-					defer wg.Done()
-					start := time.Now()
-					waitErr := waitForToken(waitCtx, dc, token, pollInterval)
-					if waitErr != nil {
-						log.Printf("waiting for token %s failed after %s: %v", token, time.Since(start), waitErr)
-					} else {
-						log.Printf("token %s processed after %s", token, time.Since(start))
+					if bom.Metadata.Component.Version != "" {
+						projectVersion = bom.Metadata.Component.Version + "_" + projectVersion
 					}
-				}()
-			}
+				}
 
-			if delay > 0 && (i+1) < diff {
-				time.Sleep(delay)
-			}
+				atomic.AddInt32(&totalUploads, 1)
+				log.Printf("creating project %d/%d", i+1, diff)
+				token, uploadErr := dc.BOM.PostBom(ctx, dtrack.BOMUploadRequest{
+					ProjectName:    projectName,
+					ProjectVersion: projectVersion,
+					BOM:            string(bomContent),
+					AutoCreate:     true,
+				})
+				if uploadErr != nil {
+					if skipFailed {
+						atomic.AddInt32(&failedUploads, 1)
+						log.Printf("failed to upload project: %v", uploadErr)
+						log.Printf("%d/%d uploads failed so far", failedUploads, totalUploads)
+						return
+					}
+
+					log.Fatalf("failed to upload project: %v", uploadErr)
+				}
+				if doWait {
+					wg.Add(1)
+					go func() {
+						defer wg.Done()
+						start := time.Now()
+						waitErr := waitForToken(waitCtx, dc, token, pollInterval)
+						if waitErr != nil {
+							log.Printf("waiting for token %s failed after %s: %v", token, time.Since(start), waitErr)
+						} else {
+							log.Printf("token %s processed after %s", token, time.Since(start))
+						}
+					}()
+				}
+
+				if delay > 0 && (i+1) < diff {
+					time.Sleep(delay)
+				}
+			}()
 		}
+
+		err = sem.Acquire(ctx, int64(maxConcurrency))
+		if err != nil {
+			log.Fatalf("failed waiting for all upload requests to complete")
+		}
+		log.Printf("all upload requests sent after %s", time.Since(start))
 
 		if doWait {
 			wg.Wait()
