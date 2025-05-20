@@ -10,6 +10,8 @@ github.com/DependencyTrack/client-go v0.14.0 h1:V2Y05GLTjRkON6S/07vIgAkqk4kplGCM
 github.com/DependencyTrack/client-go v0.14.0/go.mod h1:T5iPG+foFcv6Bn5bTNbjywbmm+gwku4I1MuQWA77sR8=
 github.com/DependencyTrack/client-go v0.15.0 h1:IBaNq0yDKY99TwAsJ6xhKmmFYQWirGr2eF53I7uykqY=
 github.com/DependencyTrack/client-go v0.15.0/go.mod h1:T5iPG+foFcv6Bn5bTNbjywbmm+gwku4I1MuQWA77sR8=
+github.com/DependencyTrack/client-go v0.17.0 h1:d5pm2nGmh/TEhmnuS5LY0LvdOHTNXwE3L/32b2IcU9o=
+github.com/DependencyTrack/client-go v0.17.0/go.mod h1:T5iPG+foFcv6Bn5bTNbjywbmm+gwku4I1MuQWA77sR8=
 github.com/Microsoft/go-winio v0.6.1 h1:9/kr64B9VUZrLm5YYwbGtUJnMgqWVOdUAXu6Migciow=
 github.com/Microsoft/go-winio v0.6.1/go.mod h1:LRdKpFKfdobln8UmuiYcKPot9D2v6svN5+sAH+4kjUM=
 github.com/bradleyjkemp/cupaloy/v2 v2.8.0 h1:any4BmKE+jGIaMpnU8YgH/I2LPiLBufr6oMMlVBbn9M=
