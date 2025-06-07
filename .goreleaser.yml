@@ -24,7 +24,7 @@ builds:
 dockers:
 - goos: linux
   goarch: amd64
-  dockerfile: Dockerfile.goreleaser
+  dockerfile: Dockerfile
   use: buildx
   image_templates:
   - "ghcr.io/nscuro/dtbench:{{ .Tag }}-amd64"
