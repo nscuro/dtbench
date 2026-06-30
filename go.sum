@@ -4,8 +4,8 @@ github.com/Azure/go-ansiterm v0.0.0-20210617225240-d185dfc1b5a1 h1:UQHMgLO+TxOEl
 github.com/Azure/go-ansiterm v0.0.0-20210617225240-d185dfc1b5a1/go.mod h1:xomTg63KZ2rFqZQzSB4Vz2SUXa1BpHTVz9L5PTmPC4E=
 github.com/CycloneDX/cyclonedx-go v0.11.0 h1:GokP8FiRC+foiuwWhSSLpSD5H4hSWtGnR3wo7apkBFI=
 github.com/CycloneDX/cyclonedx-go v0.11.0/go.mod h1:vUvbCXQsEm48OI6oOlanxstwNByXjCZ2wuleUlwGEO8=
-github.com/DependencyTrack/client-go v0.18.0 h1:HXOUuqKaxIIiksYzJTM6ltuqebxjUW0kFSbPsGSWX1Q=
-github.com/DependencyTrack/client-go v0.18.0/go.mod h1:T5iPG+foFcv6Bn5bTNbjywbmm+gwku4I1MuQWA77sR8=
+github.com/DependencyTrack/client-go v0.19.0 h1:BU1opGs9DEtsdS51a2TqdRyp3vqpHM+/57YKen4ju00=
+github.com/DependencyTrack/client-go v0.19.0/go.mod h1:T5iPG+foFcv6Bn5bTNbjywbmm+gwku4I1MuQWA77sR8=
 github.com/Microsoft/go-winio v0.6.1 h1:9/kr64B9VUZrLm5YYwbGtUJnMgqWVOdUAXu6Migciow=
 github.com/Microsoft/go-winio v0.6.1/go.mod h1:LRdKpFKfdobln8UmuiYcKPot9D2v6svN5+sAH+4kjUM=
 github.com/bradleyjkemp/cupaloy/v2 v2.8.0 h1:any4BmKE+jGIaMpnU8YgH/I2LPiLBufr6oMMlVBbn9M=
